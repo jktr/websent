@@ -19,6 +19,7 @@ var (
 	addr       string
 	port       string
 	slides     string
+	assets     string
 	stylesheet string
 )
 
@@ -28,6 +29,7 @@ func init() {
 		flag.PrintDefaults()
 	}
 	flag.StringVar(&stylesheet, "stylesheet", "style.css", "path to extra stylesheet")
+	flag.StringVar(&assets, "asset-dir", "assets/", "path to dir with images and the like")
 	flag.StringVar(&port, "port", "8080", "port to bind")
 	flag.StringVar(&addr, "addr", "[::1]", "addr to bind")
 	flag.Parse()
@@ -82,6 +84,7 @@ func NewSlideHandler(ctx context.Context, next *State, wg *sync.Cond) func(http.
 		defer cancel()
 		events := UpdateStream(streamctx, next, wg)
 
+		// minimal stylesheet to get the slideshow effect
 		fmt.Fprintf(w, `<!doctype html>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
@@ -227,6 +230,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", NewSlideHandler(ctx, state, cond))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
+	mux.Handle("/assets", http.FileServer(http.Dir(assets)))
 	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "favicon.ico")
 	})
