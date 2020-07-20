@@ -6,7 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	bf "gopkg.in/russross/blackfriday.v2"
+	bf "github.com/russross/blackfriday/v2"
 	"io"
 	"io/ioutil"
 	"log"
