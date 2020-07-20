@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,29 @@ import (
 	"syscall"
 	"time"
 )
+
+var (
+	addr       string
+	port       string
+	slides     string
+	stylesheet string
+)
+
+func init() {
+	flag.Usage = func() {
+		fmt.Printf("Usage: %s [OPTIONS] SLIDES\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.StringVar(&stylesheet, "stylesheet", "style.css", "path to extra stylesheet")
+	flag.StringVar(&port, "port", "8080", "port to bind")
+	flag.StringVar(&addr, "addr", "[::1]", "addr to bind")
+	flag.Parse()
+	if flag.NArg() != 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
+	slides = os.Args[len(os.Args)-1]
+}
 
 type State struct {
 	Current    int
@@ -74,7 +98,7 @@ body > section {
   top: calc(-100vh * (var(--slide) - 1));
   position: relative;
   width: 100%%; height: 100vh;
-  font-size: 6vh;
+  font-size: 7vh;
   overflow: hidden;
   margin: 0; padding: 0;
 }
@@ -84,9 +108,9 @@ body > section code {
 }
 `+"\n\n", next.Current, next.Total)
 
-		sendFile(w, r, "style.css")
+		sendFile(w, r, stylesheet)
 		fmt.Fprintln(w, "</style>")
-		sendFile(w, r, "slides.html")
+		sendFile(w, r, slides)
 		if wf, ok := w.(http.Flusher); ok {
 			wf.Flush()
 		}
@@ -207,7 +231,7 @@ func main() {
 		http.ServeFile(w, r, "favicon.ico")
 	})
 
-	srv := http.Server{Addr: ":8080", Handler: mux}
+	srv := http.Server{Addr: addr + ":" + port, Handler: mux}
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
