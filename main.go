@@ -4,12 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	bf "gopkg.in/russross/blackfriday.v2"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -37,7 +40,6 @@ func init() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	slides = os.Args[len(os.Args)-1]
 }
 
 type State struct {
@@ -113,7 +115,7 @@ body > section code {
 
 		sendFile(w, r, stylesheet)
 		fmt.Fprintln(w, "</style>")
-		sendFile(w, r, slides)
+		fmt.Fprintln(w, slides)
 		if wf, ok := w.(http.Flusher); ok {
 			wf.Flush()
 		}
@@ -215,9 +217,32 @@ func control(state *State, cond *sync.Cond, shutdown func()) {
 }
 
 func main() {
+	content, err := ioutil.ReadFile(os.Args[len(os.Args)-1])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// FIXME custom blackfriday HTMLRenderer seems a better solution
+	markdown := string(content)
+	sections := strings.Split(markdown, "\n\n\n")
+	for idx, sec := range sections {
+		text := string(bf.Run([]byte(sec), bf.WithExtensions(bf.CommonExtensions)))
+		text = strings.TrimPrefix(text, "<p>")
+		text = strings.TrimSuffix(text, "</p>\n")
+		text = "<section>\n" + text + "</section>\n"
+		sections[idx] = text
+		if idx == 0 && strings.HasPrefix(sec, "# ") {
+			title := strings.TrimPrefix(sections[0], "<section>\n<h1>")
+			title = strings.TrimSuffix(title, "</h1>\n</section>\n")
+			title = "<title>" + title + "</title>"
+			sections[0] = title + "\n" + sections[0]
+		}
+	}
+	slides = strings.Join(sections, "\n")
+
 	state := &State{
 		Current:    1,
-		Total:      100,
+		Total:      len(sections),
 		Generation: 0,
 	}
 
