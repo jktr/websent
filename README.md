@@ -6,6 +6,17 @@ Write your slides in markdown.
 Serve them over http as an in-browser presentation.  
 Controlled via CLI. Doesn't need JavaScript.
 
+First, install the tool with:
+```
+$ go get -u github.com/jktr/websent
+```
+
+You can then run the tool like this:
+```
+$ websent --port 8080 presentation.md
+```
+
+The file format for presentations looks like this:
 ```markdown
 # example presentation
 
@@ -19,6 +30,8 @@ This is the first slide.
 
 Run with `websent slides.md` and browse
 to [localhost](http://localhost:8080).
+
+
 Use `j` and `k` move between slides.
 `r` reloads. `q` quits.
 ```
@@ -37,5 +50,5 @@ these issues somewhat.
 
 This is an enhanced port of a tech demo originally
 developed by [thelegy](https://github.com/thelegy), which he
-built for a talk at [C3PB talk](https://c3pb.de/blog/lightning-talks-0x0c-keepassxc-mf70-cnc-webseiten-ohne-js.html).
+built for a talk at [C3PB](https://c3pb.de/blog/lightning-talks-0x0c-keepassxc-mf70-cnc-webseiten-ohne-js.html).
 
