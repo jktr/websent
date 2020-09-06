@@ -23,7 +23,6 @@ import (
 )
 
 var (
-	// flags
 	addr         string
 	port         string
 	assets       string
@@ -79,7 +78,9 @@ type State struct {
 	Current    int // 1-indexed
 	Total      int
 	Generation int
-	Slides     *string
+	Title      string
+	Slides     []string
+	SlidesRaw  []string
 	Stylesheet *string
 	M          *sync.RWMutex
 }
@@ -98,11 +99,10 @@ func (s *State) GotoSlide(slide int) {
 }
 
 func (s *State) Reload(presentation, stylesheet string) error {
-	slides, err := loadSlides(presentation)
+	title, slides, slidesRaw, err := loadSlides(presentation)
 	if err != nil {
 		return err
 	}
-	slidesConcat := strings.Join(slides, "\n")
 
 	if len(slides) < 1 {
 		return errors.New("tried to load a presentation without slides")
@@ -117,12 +117,15 @@ func (s *State) Reload(presentation, stylesheet string) error {
 	s.M.Lock()
 	defer s.M.Unlock()
 
+	s.Generation++
 	s.Total = len(slides)
 	if s.Current > s.Total {
 		s.Current = s.Total
 	}
+	s.Title = title
+	s.Slides = slides
+	s.SlidesRaw = slidesRaw
 	s.Stylesheet = &style
-	s.Slides = &slidesConcat
 
 	return nil
 }
@@ -190,10 +193,14 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// send header, user stylesheet, and slides
 	h.state.M.RLock()
-	fmt.Fprintf(w, documentHeader, h.state.Current, h.state.Total)
-	fmt.Fprintln(w, *h.state.Stylesheet)
-	fmt.Fprintln(w, "</style>")
-	fmt.Fprintln(w, *h.state.Slides)
+	{
+		fmt.Fprintf(w, documentHeader, h.state.Current, h.state.Total)
+		fmt.Fprintln(w, *h.state.Stylesheet)
+		fmt.Fprintf(w, "</style>\n<title>%s</title>\n", h.state.Title)
+		for _, slide := range h.state.Slides {
+			fmt.Fprintln(w, slide)
+		}
+	}
 	h.state.M.RUnlock()
 
 	if wf, ok := w.(http.Flusher); ok {
@@ -289,32 +296,34 @@ func cli(state *State, cond *sync.Cond, shutdown func()) {
 	}
 }
 
-func loadSlides(file string) ([]string, error) {
+func loadSlides(file string) (string, []string, []string, error) {
 	content, err := ioutil.ReadFile(file)
 	if err != nil {
-		return []string{}, err
+		return "", []string{}, []string{}, err
 	}
 
 	// drops trailing blank lines/slides
 	content = bytes.TrimSpace(content)
 
 	// FIXME custom blackfriday HTMLRenderer seems like a better solution
-	slides := []string{}
-	for idx, slide := range bytes.Split(content, []byte("\n\n\n")) {
+	title := "websent"
+	slidesHTML := []string{}
+	slidesMarkdown := []string{}
+	for _, slide := range bytes.Split(content, []byte("\n\n\n")) {
 
 		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions)))
 		text = "<section>\n" + text + "</section>\n"
 
-		// auto-generate page title from markdown header line
-		if idx == 0 && bytes.HasPrefix(slide, []byte("# ")) {
-			// get first line in slide, then use everything after "# " as title
-			title := string(bytes.SplitN(slide, []byte("\n"), 2)[0][2:])
-			text = "<title>" + title + "</title>\n" + text
-		}
-
-		slides = append(slides, text)
+		slidesHTML = append(slidesHTML, text)
+		slidesMarkdown = append(slidesMarkdown, string(slide)+"\n")
 	}
-	return slides, nil
+
+	if bytes.HasPrefix(content, []byte("# ")) {
+		// string containing everything after "# " in first line
+		title = string(bytes.SplitN(content, []byte("\n"), 2)[0][2:])
+	}
+
+	return title, slidesHTML, slidesMarkdown, nil
 }
 
 func main() {
