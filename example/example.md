@@ -23,4 +23,4 @@ echo 'code blocks are supported'
 ```
 
 
-[A sample image](/assets/green.jpg)
+![images are served from the --asset-dir](green.jpg)

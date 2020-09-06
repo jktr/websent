@@ -32,6 +32,7 @@ var (
 const documentHeader = `<!doctype html>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
+<base href='/assets/'>
 <style>
 :root { --slide:%d; --total-slides:'%d'; }
 body {
@@ -269,10 +270,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", NewSlideHandler(ctx, state, cond))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
-	mux.Handle("/assets", http.FileServer(http.Dir(assets)))
-	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "favicon.ico")
-	})
+	mux.Handle("/assets/", http.FileServer(http.Dir(assets)))
+	mux.Handle("/favicon.ico", http.RedirectHandler(
+		"/assets/favicon.ico", http.StatusTemporaryRedirect))
 
 	srv := http.Server{Addr: addr + ":" + port, Handler: mux}
 	fmt.Printf("Listening on http://%s:%s\n", addr, port)
