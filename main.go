@@ -108,18 +108,18 @@ func UpdateStream(ctx context.Context, next *State, cond *sync.Cond) <-chan inte
 	return ch
 }
 
-func NewSlideHandler(ctx context.Context, next *State, wg *sync.Cond) func(http.ResponseWriter, *http.Request) {
+func NewSlideHandler(ctx context.Context, state *State, wg *sync.Cond) func(http.ResponseWriter, *http.Request) {
 	f := func(w http.ResponseWriter, r *http.Request) {
 
 		streamctx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		events := UpdateStream(streamctx, next, wg)
+		events := UpdateStream(streamctx, state, wg)
 
 		// send header, user stylesheet, and slides
-		fmt.Fprintf(w, documentHeader+"\n\n", next.Current, next.Total)
+		fmt.Fprintf(w, documentHeader+"\n\n", state.Current, state.Total)
 		sendFile(w, r, stylesheet)
 		fmt.Fprintln(w, "</style>")
-		fmt.Fprintln(w, *next.Slides)
+		fmt.Fprintln(w, *state.Slides)
 		if wf, ok := w.(http.Flusher); ok {
 			wf.Flush()
 		}
