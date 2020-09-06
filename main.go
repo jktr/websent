@@ -250,6 +250,8 @@ type Event int16
 
 const (
 	Unknown Event = iota
+	First
+	Last
 	Next
 	Prev
 	Reload
@@ -278,6 +280,10 @@ func decodeTcellEvent(event tcell.Event) Event {
 		if key == tcell.KeyRune {
 			// TODO make these configurable
 			switch event.Rune() {
+			case 'g':
+				return First
+			case 'G':
+				return Last
 			case 'j': // vi-style forward
 				return Next
 			case 'k': // vi-style back
@@ -377,6 +383,14 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 
 		event := screen.PollEvent()
 		switch decodeTcellEvent(event) {
+		case First:
+			state.GotoSlide(1)
+			cond.Broadcast()
+			refreshSlide()
+		case Last:
+			state.GotoSlide(state.Total)
+			cond.Broadcast()
+			refreshSlide()
 		case Next:
 			state.GotoSlide(state.Current + 1)
 			cond.Broadcast()
