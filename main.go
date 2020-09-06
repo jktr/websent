@@ -188,6 +188,12 @@ func NewSlideHandler(ctx context.Context, state *State, cond *sync.Cond) SlideHa
 }
 
 func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// "/" matches all paths, so check that it's actually "/"
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
 	streamctx, cancel := context.WithCancel(h.ctx)
 	defer cancel()
 	events := h.state.EventStream(streamctx, h.cond)
