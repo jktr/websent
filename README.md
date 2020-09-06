@@ -4,7 +4,7 @@ This is a tool for quick and easy presentations in the browser.
 
 Write your slides in markdown.  
 Serve them over http as an in-browser presentation.  
-Controlled via CLI.  
+Controlled via terminal.  
 Doesn't need any JavaScript.
 
 First, install the tool with:

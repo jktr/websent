@@ -8,18 +8,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	bf "github.com/russross/blackfriday/v2"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/views"
+	bf "github.com/russross/blackfriday/v2"
 )
 
 var (
@@ -243,55 +244,144 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func cli(state *State, cond *sync.Cond, shutdown func()) {
-	// XXX it's either this or ncurses :/
-	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
-	var b []byte = make([]byte, 1)
-	for {
-		fmt.Printf("%d/%d> ", state.Current, state.Total)
-		_, err := os.Stdin.Read(b)
-		if err != nil {
-			if err == io.EOF {
-				shutdown()
-				break
-			} else {
-				log.Print(err)
-				continue
+type Event int16
+
+const (
+	Unknown Event = iota
+	Next
+	Prev
+	Reload
+	Quit
+	Redraw
+)
+
+func decodeTcellEvent(event tcell.Event) Event {
+	switch event := event.(type) {
+	case *tcell.EventResize:
+		return Redraw
+	case *tcell.EventMouse:
+		switch event.Buttons() {
+		case tcell.Button1:
+			return Next
+		case tcell.Button3:
+			return Prev
+		case tcell.WheelDown:
+			return Next
+		case tcell.WheelUp:
+			return Prev
+		}
+	case *tcell.EventKey:
+		key := event.Key()
+
+		if key == tcell.KeyRune {
+			// TODO make these configurable
+			switch event.Rune() {
+			case 'j': // vi-style forward
+				return Next
+			case 'k': // vi-style back
+				return Prev
+			case 't': // dvorak-style forward
+				return Next
+			case 'n': // dvorak-style back
+				return Prev
+			case 'r':
+				return Reload
+			case 'q':
+				return Quit
+			}
+		} else {
+			switch key {
+			case tcell.KeyCtrlD:
+				return Quit
+			case tcell.KeyCtrlC:
+				return Quit
 			}
 		}
-		fmt.Println()
+	}
+	return Unknown
+}
 
-		// TODO make this configurable
-		// jk - vi-style forward/back on querty
-		// tn - vi-style forward/back on dvorak (but shifted right by one)
-		// r - reload
-		// q - quit
-		exit := false
-		switch string(b) {
-		case "t":
-			fallthrough
-		case "j":
+func tui(state *State, cond *sync.Cond, shutdown func()) {
+
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err = screen.Init(); err != nil {
+		log.Fatal(err)
+	}
+
+	screen.HideCursor()
+	screen.EnableMouse()
+	defer screen.DisableMouse()
+
+	panel := views.NewPanel()
+	panel.SetView(screen)
+
+	header := views.NewTextBar()
+	header.SetStyle(tcell.StyleDefault.Reverse(true))
+	panel.SetTitle(header)
+
+	slide := views.NewText()
+	slide.SetAlignment(views.VAlignCenter)
+	panel.SetContent(slide)
+
+	status := views.NewTextBar()
+	status.SetRight(fmt.Sprintf("http://%s:%s ", addr, port), tcell.StyleDefault)
+	panel.SetStatus(status)
+
+	refreshTitle := func() {
+		header.SetCenter(state.Title, tcell.StyleDefault)
+		header.Draw()
+	}
+	refreshSlide := func() {
+		status.SetLeft(
+			fmt.Sprintf(" %d/%d", state.Current, state.Total),
+			tcell.StyleDefault)
+		status.Draw()
+
+		raw := state.SlidesRaw[state.Current-1]
+		prefix := "\n   "
+		raw = prefix + strings.Join(strings.Split(raw, "\n"), prefix)
+		slide.SetText(raw)
+		slide.Draw()
+	}
+
+	refreshTitle()
+	refreshSlide()
+
+	panel.Draw()
+	for {
+		screen.Show()
+
+		event := screen.PollEvent()
+		switch decodeTcellEvent(event) {
+		case Next:
 			state.GotoSlide(state.Current + 1)
-		case "n":
-			fallthrough
-		case "k":
+			cond.Broadcast()
+			refreshSlide()
+		case Prev:
 			state.GotoSlide(state.Current - 1)
-		case "r":
-			state.Generation++
+			cond.Broadcast()
+			refreshSlide()
+		case Reload:
 			err := state.Reload(presentation, stylesheet)
 			if err != nil {
 				log.Println(err)
 				continue
 			}
-		case "q":
+			cond.Broadcast()
+			refreshTitle()
+			refreshSlide()
+		case Quit:
 			shutdown()
-			exit = true
+			cond.Broadcast()
+			screen.Fini()
 			return
-		}
-
-		cond.Broadcast()
-		if exit {
-			return
+		case Redraw:
+			panel.Resize()
+			panel.Draw()
 		}
 	}
 }
@@ -349,9 +439,8 @@ func main() {
 		"/assets/favicon.ico", http.StatusTemporaryRedirect))
 
 	srv := http.Server{Addr: addr + ":" + port, Handler: mux}
-	fmt.Printf("Listening on http://%s:%s\n", addr, port)
 
-	go cli(state, cond, cancel)
+	go tui(state, cond, cancel)
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
