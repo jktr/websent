@@ -323,12 +323,19 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 	header.SetStyle(tcell.StyleDefault.Reverse(true))
 	panel.SetTitle(header)
 
-	slide := views.NewText()
-	slide.SetAlignment(views.VAlignCenter)
-	panel.SetContent(slide)
+	slides := views.NewBoxLayout(views.Orientation(1))
+	panel.SetContent(slides)
+
+	window := [3]*views.Text{}
+	for idx := range window {
+		w := views.NewText()
+		slides.AddWidget(w, 0.3)
+		window[idx] = w
+	}
 
 	status := views.NewTextBar()
-	status.SetRight(fmt.Sprintf("http://%s:%s ", addr, port), tcell.StyleDefault)
+	status.SetLeft(fmt.Sprintf(" http://%s:%s ", addr, port), tcell.StyleDefault)
+	status.SetRight("j|next k|prev r|eload q|uit ", tcell.StyleDefault)
 	panel.SetStatus(status)
 
 	refreshTitle := func() {
@@ -336,16 +343,27 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 		header.Draw()
 	}
 	refreshSlide := func() {
-		status.SetLeft(
+		status.SetCenter(
 			fmt.Sprintf(" %d/%d", state.Current, state.Total),
 			tcell.StyleDefault)
 		status.Draw()
 
-		raw := state.SlidesRaw[state.Current-1]
-		prefix := "\n   "
-		raw = prefix + strings.Join(strings.Split(raw, "\n"), prefix)
-		slide.SetText(raw)
-		slide.Draw()
+		for idx, r := range [3]string{} {
+			indent := "\n         "
+			prefix := indent
+			if state.Current+idx <= state.Total {
+				if idx == 0 {
+					prefix = fmt.Sprintf("\n\n > %3d   ", state.Current+idx)
+				} else {
+					prefix = fmt.Sprintf("   %3d   ", state.Current+idx)
+				}
+				r = state.SlidesRaw[state.Current+idx-1]
+			}
+
+			content := strings.Join(strings.Split(r, "\n"), indent)
+			window[idx].SetText(prefix + content)
+		}
+		slides.Draw()
 	}
 
 	refreshTitle()
