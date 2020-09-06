@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gdamore/tcell"
-	"github.com/gdamore/tcell/views"
-	bf "github.com/russross/blackfriday/v2"
+	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/views"
+	bf "gopkg.in/russross/blackfriday.v2"
 )
 
 var (
