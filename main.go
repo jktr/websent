@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	bf "github.com/russross/blackfriday/v2"
@@ -22,10 +23,11 @@ import (
 
 var (
 	// flags
-	addr       string
-	port       string
-	assets     string
-	stylesheet string
+	addr         string
+	port         string
+	assets       string
+	stylesheet   string
+	presentation string
 )
 
 // minimal stylesheet to get the slideshow effect
@@ -69,22 +71,73 @@ func init() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	presentation = os.Args[len(os.Args)-1]
 }
 
 type State struct {
-	Current    int
+	Current    int // 1-indexed
 	Total      int
 	Generation int
 	Slides     *string
+	Stylesheet *string
+	M          *sync.RWMutex
 }
 
-func UpdateStream(ctx context.Context, next *State, cond *sync.Cond) <-chan interface{} {
+func (s *State) GotoSlide(slide int) {
+	s.M.Lock()
+	defer s.M.Unlock()
+
+	if slide < 1 {
+		s.Current = 1
+	} else if slide > s.Total {
+		s.Current = s.Total
+	} else {
+		s.Current = slide
+	}
+}
+
+func (s *State) Reload(presentation, stylesheet string) error {
+	slides, err := loadSlides(presentation)
+	if err != nil {
+		return err
+	}
+	slidesConcat := strings.Join(slides, "\n")
+
+	if len(slides) < 1 {
+		return errors.New("tried to load a presentation without slides")
+	}
+
+	styleBytes, err := ioutil.ReadFile(stylesheet)
+	if err != nil {
+		return err
+	}
+	style := string(styleBytes)
+
+	s.M.Lock()
+	defer s.M.Unlock()
+
+	s.Total = len(slides)
+	if s.Current > s.Total {
+		s.Current = s.Total
+	}
+	s.Stylesheet = &style
+	s.Slides = &slidesConcat
+
+	return nil
+}
+
+func (s *State) EventStream(ctx context.Context, cond *sync.Cond) <-chan interface{} {
 	ch := make(chan interface{}, 1)
 	go func() {
 		defer close(ch)
 
-		state := *next
+		s.M.RLock()
+		generation := s.Generation
+		current := s.Current
+		s.M.RUnlock()
+
 		for {
+			// ref: https://golang.org/pkg/sync/#Cond.Wait
 			cond.L.Lock()
 			cond.Wait()
 			cond.L.Unlock()
@@ -95,14 +148,20 @@ func UpdateStream(ctx context.Context, next *State, cond *sync.Cond) <-chan inte
 			default:
 			}
 
-			if next.Generation > state.Generation {
-				ch <- "refresh"
-				return
+			s.M.RLock()
+			{
+				if s.Generation > generation {
+					ch <- "refresh"
+
+					s.M.RUnlock()
+					return
+				}
+				if s.Current != current {
+					current = s.Current
+					ch <- current
+				}
 			}
-			if next.Current != state.Current {
-				state.Current = next.Current
-				ch <- state.Current
-			}
+			s.M.RUnlock()
 
 		}
 	}()
@@ -117,10 +176,13 @@ func NewSlideHandler(ctx context.Context, state *State, wg *sync.Cond) func(http
 		events := UpdateStream(streamctx, state, wg)
 
 		// send header, user stylesheet, and slides
-		fmt.Fprintf(w, documentHeader+"\n\n", state.Current, state.Total)
-		sendFile(w, r, stylesheet)
+		h.state.M.RLock()
+		fmt.Fprintf(w, documentHeader, h.state.Current, h.state.Total)
+		fmt.Fprintln(w, *h.state.Stylesheet)
 		fmt.Fprintln(w, "</style>")
-		fmt.Fprintln(w, *state.Slides)
+		fmt.Fprintln(w, *h.state.Slides)
+		h.state.M.RUnlock()
+       
 		if wf, ok := w.(http.Flusher); ok {
 			wf.Flush()
 		}
@@ -163,27 +225,7 @@ func NewSlideHandler(ctx context.Context, state *State, wg *sync.Cond) func(http
 	return f
 }
 
-func sendFile(w http.ResponseWriter, r *http.Request, name string) {
-	if f, err := os.Open(name); err != nil {
-		log.Print(err)
-	} else {
-		if _, err = io.Copy(w, f); err != nil {
-			log.Print(err)
-		}
-	}
-}
-
-func clamp(min int, max int, n int) int {
-	if n < min {
-		return min
-	} else if max < n {
-		return max
-	} else {
-		return n
-	}
-}
-
-func control(state *State, cond *sync.Cond, shutdown func()) {
+func cli(state *State, cond *sync.Cond, shutdown func()) {
 	// XXX it's either this or ncurses :/
 	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
 	var b []byte = make([]byte, 1)
@@ -201,23 +243,36 @@ func control(state *State, cond *sync.Cond, shutdown func()) {
 		}
 		fmt.Println()
 
+		// TODO make this configurable
+		// jk - vi-style forward/back on querty
+		// tn - vi-style forward/back on dvorak (but shifted right by one)
+		// r - reload
+		// q - quit
+		exit := false
 		switch string(b) {
 		case "t":
 			fallthrough
 		case "j":
-			state.Current = clamp(1, state.Total, state.Current+1)
-			cond.Broadcast()
+			state.GotoSlide(state.Current + 1)
 		case "n":
 			fallthrough
 		case "k":
-			state.Current = clamp(1, state.Total, state.Current-1)
-			cond.Broadcast()
+			state.GotoSlide(state.Current - 1)
 		case "r":
 			state.Generation++
-			cond.Broadcast()
+			err := state.Reload(presentation, stylesheet)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
 		case "q":
 			shutdown()
-			cond.Broadcast()
+			exit = true
+			return
+		}
+
+		cond.Broadcast()
+		if exit {
 			return
 		}
 	}
@@ -248,19 +303,14 @@ func loadSlides(file string) ([]string, error) {
 }
 
 func main() {
-
-	slides, err := loadSlides(os.Args[len(os.Args)-1])
-	if err != nil {
-		log.Fatal(err)
+	state := &State{
+		Current: 1,
+		M:       &sync.RWMutex{},
 	}
 
-	slidesConcat := strings.Join(slides, "\n")
-
-	state := &State{
-		Current:    1,
-		Total:      len(slides),
-		Generation: 0,
-		Slides:     &slidesConcat,
+	err := state.Reload(presentation, stylesheet)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	cond := sync.NewCond(&sync.Mutex{})
@@ -277,7 +327,7 @@ func main() {
 	srv := http.Server{Addr: addr + ":" + port, Handler: mux}
 	fmt.Printf("Listening on http://%s:%s\n", addr, port)
 
-	go control(state, cond, cancel)
+	go cli(state, cond, cancel)
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
