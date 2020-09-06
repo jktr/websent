@@ -421,6 +421,11 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 }
 
 func loadSlides(file string) (string, []string, []string, error) {
+	if !strings.HasSuffix(file, ".md") {
+		return "", []string{}, []string{},
+			errors.New(file + " doesn't end in '.md'; not markdown?")
+	}
+
 	content, err := ioutil.ReadFile(file)
 	if err != nil {
 		return "", []string{}, []string{}, err
