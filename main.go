@@ -66,7 +66,7 @@ func init() {
 	flag.StringVar(&stylesheet, "stylesheet", "style.css", "path to extra stylesheet")
 	flag.StringVar(&assets, "asset-dir", "assets/", "path to dir with images and the like")
 	flag.StringVar(&port, "port", "8080", "port to bind")
-	flag.StringVar(&addr, "addr", "[::1]", "addr to bind")
+	flag.StringVar(&addr, "addr", "localhost", "addr to bind")
 	flag.Parse()
 	if flag.NArg() != 1 {
 		flag.Usage()
