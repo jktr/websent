@@ -52,10 +52,6 @@ body > section {
   font-size: 7vh;
   overflow: hidden;
   margin: 0; padding: 0;
-}
-body > section code {
-  font-size: 5vh;
-  line-height: 0.5rem;
 }`
 
 func init() {
