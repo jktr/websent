@@ -1,39 +1,23 @@
 # websent
 
-This is a tool for quick and easy presentations.
+This is a tool for quick and easy presentations in the browser.
 
 Write your slides in markdown.  
 Serve them over http as an in-browser presentation.  
-Controlled via CLI. Doesn't need JavaScript.
+Controlled via CLI.  
+Doesn't need any JavaScript.
 
 First, install the tool with:
 ```
 $ go get -u github.com/jktr/websent
 ```
 
-You can then run the tool like this:
+You can then run the tool like this.  
+An example presentation can be found in the /example directory.
 ```
-$ websent --port 8080 presentation.md
-```
-
-The file format for presentations looks like this:
-```markdown
-# example presentation
-
-
-This is the first slide.
-
-
-- This is the the second slide
-- Slides are separated by two blank lines
-
-
-Run with `websent slides.md` and browse
-to [localhost](http://localhost:8080).
-
-
-Use `j` and `k` move between slides.
-`r` reloads. `q` quits.
+$ websent presentation.md
+Listening on http://[::1]:8080
+1/7>
 ```
 
 Note:
