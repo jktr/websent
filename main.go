@@ -126,13 +126,15 @@ func NewSlideHandler(ctx context.Context, state *State, wg *sync.Cond) func(http
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case <-time.After(30 * time.Second):
+				// Trickle a byte so client doesn't close connection.
+				// Browsers typically time out after 1 minute.
 				fmt.Fprintln(w)
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
 				}
-			case <-ctx.Done():
-				return
 			case e, more := <-events:
 				if !more {
 					return
