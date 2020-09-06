@@ -21,9 +21,9 @@ import (
 )
 
 var (
+	// flags
 	addr       string
 	port       string
-	slides     string
 	assets     string
 	stylesheet string
 )
@@ -74,6 +74,7 @@ type State struct {
 	Current    int
 	Total      int
 	Generation int
+	Slides     *string
 }
 
 func UpdateStream(ctx context.Context, next *State, cond *sync.Cond) <-chan interface{} {
@@ -118,7 +119,7 @@ func NewSlideHandler(ctx context.Context, next *State, wg *sync.Cond) func(http.
 		fmt.Fprintf(w, documentHeader+"\n\n", next.Current, next.Total)
 		sendFile(w, r, stylesheet)
 		fmt.Fprintln(w, "</style>")
-		fmt.Fprintln(w, slides)
+		fmt.Fprintln(w, *next.Slides)
 		if wf, ok := w.(http.Flusher); ok {
 			wf.Flush()
 		}
@@ -219,10 +220,10 @@ func control(state *State, cond *sync.Cond, shutdown func()) {
 	}
 }
 
-func main() {
-	content, err := ioutil.ReadFile(os.Args[len(os.Args)-1])
+func loadSlides(file string) ([]string, error) {
+	content, err := ioutil.ReadFile(file)
 	if err != nil {
-		log.Fatal(err)
+		return []string{}, err
 	}
 
 	// FIXME custom blackfriday HTMLRenderer seems a better solution
@@ -241,12 +242,23 @@ func main() {
 			sections[0] = title + "\n" + sections[0]
 		}
 	}
-	slides = strings.Join(sections, "\n")
+	return slides, nil
+}
+
+func main() {
+
+	slides, err := loadSlides(os.Args[len(os.Args)-1])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	slidesConcat := strings.Join(slides, "\n")
 
 	state := &State{
 		Current:    1,
-		Total:      len(sections),
+		Total:      len(slides),
 		Generation: 0,
+		Slides:     &slidesConcat,
 	}
 
 	cond := sync.NewCond(&sync.Mutex{})
