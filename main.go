@@ -168,61 +168,71 @@ func (s *State) EventStream(ctx context.Context, cond *sync.Cond) <-chan interfa
 	return ch
 }
 
-func NewSlideHandler(ctx context.Context, state *State, wg *sync.Cond) func(http.ResponseWriter, *http.Request) {
-	f := func(w http.ResponseWriter, r *http.Request) {
+type SlideHandler struct {
+	ctx   context.Context
+	state *State
+	cond  *sync.Cond
+}
 
-		streamctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		events := UpdateStream(streamctx, state, wg)
+func NewSlideHandler(ctx context.Context, state *State, cond *sync.Cond) SlideHandler {
+	return SlideHandler{
+		ctx:   ctx,
+		state: state,
+		cond:  cond,
+	}
+}
 
-		// send header, user stylesheet, and slides
-		h.state.M.RLock()
-		fmt.Fprintf(w, documentHeader, h.state.Current, h.state.Total)
-		fmt.Fprintln(w, *h.state.Stylesheet)
-		fmt.Fprintln(w, "</style>")
-		fmt.Fprintln(w, *h.state.Slides)
-		h.state.M.RUnlock()
-       
-		if wf, ok := w.(http.Flusher); ok {
-			wf.Flush()
-		}
+func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	streamctx, cancel := context.WithCancel(h.ctx)
+	defer cancel()
+	events := h.state.EventStream(streamctx, h.cond)
 
-		for {
-			select {
-			case <-ctx.Done():
+	// send header, user stylesheet, and slides
+	h.state.M.RLock()
+	fmt.Fprintf(w, documentHeader, h.state.Current, h.state.Total)
+	fmt.Fprintln(w, *h.state.Stylesheet)
+	fmt.Fprintln(w, "</style>")
+	fmt.Fprintln(w, *h.state.Slides)
+	h.state.M.RUnlock()
+
+	if wf, ok := w.(http.Flusher); ok {
+		wf.Flush()
+	}
+
+	for {
+		select {
+		case <-h.ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
+			// Trickle a byte so client doesn't close connection.
+			// Browsers typically time out connections after 1 minute.
+			fmt.Fprintln(w)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		case e, more := <-events:
+			if !more {
 				return
-			case <-time.After(30 * time.Second):
-				// Trickle a byte so client doesn't close connection.
-				// Browsers typically time out after 1 minute.
-				fmt.Fprintln(w)
+			}
+
+			switch e := e.(type) {
+			case int:
+				fmt.Fprintf(w, "<style>:root{--slide:%d;}</style>\n", e)
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
 				}
-			case e, more := <-events:
-				if !more {
-					return
-				}
-
-				switch e := e.(type) {
-				case int:
-					fmt.Fprintf(w, "<style>:root{--slide:%d;}</style>\n", e)
+			case string:
+				switch e {
+				case "refresh":
+					fmt.Fprintln(w, "<script>location.reload();</script>")
 					if f, ok := w.(http.Flusher); ok {
 						f.Flush()
 					}
-				case string:
-					switch e {
-					case "refresh":
-						fmt.Fprintln(w, "<script>location.reload();</script>")
-						if f, ok := w.(http.Flusher); ok {
-							f.Flush()
-						}
-						return
-					}
+					return
 				}
 			}
 		}
 	}
-	return f
 }
 
 func cli(state *State, cond *sync.Cond, shutdown func()) {
@@ -318,7 +328,7 @@ func main() {
 	defer cancel()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", NewSlideHandler(ctx, state, cond))
+	mux.Handle("/", NewSlideHandler(ctx, state, cond))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
 	mux.Handle("/assets/", http.FileServer(http.Dir(assets)))
 	mux.Handle("/favicon.ico", http.RedirectHandler(
