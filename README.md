@@ -1,36 +1,37 @@
 # websent
 
-This is a tool for quick and easy presentations in the browser.
+This is a tool for quick and easy presentations.
 
 Write your slides in markdown.  
 Serve them over http as an in-browser presentation.  
 Controlled via terminal.  
 Doesn't need any JavaScript.
 
-First, install the tool with:
+First, build or fetch the tool with:
 ```
+$ git clone https://github.com/jktr/websent
+$ cd websent && go build
+
 $ go get -u github.com/jktr/websent
 ```
 
-You can then run the tool like this.  
-An example presentation can be found in the /example directory.
+You can then launch the tutorial presentation
+from the `/example` directory and view
+it at http://localhost:8080.
 ```
-$ websent presentation.md
-Listening on http://[::1]:8080
-1/7>
+$ cd example/
+$ websent tutorial.md
+<TUI opens>
 ```
 
-Note:
-- You will probably want to provide your own stylesheet.
-- There is no TLS support. Use a reverse proxy if you need it.
 
 [Suckess' sent](https://tools.suckless.org/sent)
 previously filled this tool's niche for me, but there
 are some some issues with wayland, low-bandwidth
-streaming, and missing support for fancier typesetting.
-While not in the least bit suckless, using a
-browser as the rendering platform addresses
-these issues somewhat.
+streaming, multi-headed output, and missing support
+for fancier typesetting. While not in the least bit
+suckless, using a browser as the rendering platform
+addresses these issues somewhat.
 
 This is an enhanced port of a tech demo originally
 developed by [thelegy](https://github.com/thelegy), which he
