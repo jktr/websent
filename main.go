@@ -28,6 +28,32 @@ var (
 	stylesheet string
 )
 
+// minimal stylesheet to get the slideshow effect
+const documentHeader = `<!doctype html>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
+<style>
+:root { --slide:%d; --total-slides:'%d'; }
+body {
+  height:100vh; width:100%%;
+  position:fixed; overflow:hidden;
+  padding: 0; margin: 0;
+}
+body > section {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  top: calc(-100vh * (var(--slide) - 1));
+  position: relative;
+  width: 100%%; height: 100vh;
+  font-size: 7vh;
+  overflow: hidden;
+  margin: 0; padding: 0;
+}
+body > section code {
+  font-size: 5vh;
+  line-height: 0.5rem;
+}`
+
 func init() {
 	flag.Usage = func() {
 		fmt.Printf("Usage: %s [OPTIONS] SLIDES\n", os.Args[0])
@@ -88,33 +114,8 @@ func NewSlideHandler(ctx context.Context, next *State, wg *sync.Cond) func(http.
 		defer cancel()
 		events := UpdateStream(streamctx, next, wg)
 
-		// minimal stylesheet to get the slideshow effect
-		fmt.Fprintf(w, `<!doctype html>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
-<style>
-:root { --slide:%d; --total-slides:'%d'; }
-body {
-  height:100vh; width:100%%;
-  position:fixed; overflow:hidden;
-  padding: 0; margin: 0;
-}
-body > section {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  top: calc(-100vh * (var(--slide) - 1));
-  position: relative;
-  width: 100%%; height: 100vh;
-  font-size: 7vh;
-  overflow: hidden;
-  margin: 0; padding: 0;
-}
-body > section code {
-  font-size: 5vh;
-  line-height: 0.5rem;
-}
-`+"\n\n", next.Current, next.Total)
-
+		// send header, user stylesheet, and slides
+		fmt.Fprintf(w, documentHeader+"\n\n", next.Current, next.Total)
 		sendFile(w, r, stylesheet)
 		fmt.Fprintln(w, "</style>")
 		fmt.Fprintln(w, slides)
