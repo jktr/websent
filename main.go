@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -294,20 +295,24 @@ func loadSlides(file string) ([]string, error) {
 		return []string{}, err
 	}
 
-	// FIXME custom blackfriday HTMLRenderer seems a better solution
-	markdown := string(content)
-	slides := strings.Split(markdown, "\n\n\n")
-	for idx, slide := range slides {
-		text := string(bf.Run([]byte(slide), bf.WithExtensions(bf.CommonExtensions)))
+	// drops trailing blank lines/slides
+	content = bytes.TrimSpace(content)
+
+	// FIXME custom blackfriday HTMLRenderer seems like a better solution
+	slides := []string{}
+	for idx, slide := range bytes.Split(content, []byte("\n\n\n")) {
+
+		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions)))
 		text = "<section>\n" + text + "</section>\n"
 
 		// auto-generate page title from markdown header line
-		if idx == 0 && strings.HasPrefix(slide, "# ") {
-			title := strings.SplitN(slide, "\n", 2)[0][2:]
+		if idx == 0 && bytes.HasPrefix(slide, []byte("# ")) {
+			// get first line in slide, then use everything after "# " as title
+			title := string(bytes.SplitN(slide, []byte("\n"), 2)[0][2:])
 			text = "<title>" + title + "</title>\n" + text
 		}
 
-		slides[idx] = text
+		slides = append(slides, text)
 	}
 	return slides, nil
 }
