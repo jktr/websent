@@ -266,8 +266,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go control(state, cond, cancel)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", NewSlideHandler(ctx, state, cond))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
@@ -277,6 +275,9 @@ func main() {
 	})
 
 	srv := http.Server{Addr: addr + ":" + port, Handler: mux}
+	fmt.Printf("Listening on http://%s:%s\n", addr, port)
+
+	go control(state, cond, cancel)
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
