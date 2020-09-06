@@ -457,8 +457,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", NewSlideHandler(ctx, state, cond))
+	mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir(assets))))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
-	mux.Handle("/assets/", http.FileServer(http.Dir(assets)))
 	mux.Handle("/favicon.ico", http.RedirectHandler(
 		"/assets/favicon.ico", http.StatusTemporaryRedirect))
 
