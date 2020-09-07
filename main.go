@@ -107,7 +107,13 @@ func (s *State) Reload(presentation, stylesheet string) error {
 
 	styleBytes, err := ioutil.ReadFile(stylesheet)
 	if err != nil {
-		return err
+		if os.IsNotExist(err) && stylesheet == "style.css" {
+			// fall back to the builtin stylesheet only if the
+			// sheet we failed to fetch was at the default path
+			styleBytes = []byte{}
+		} else {
+			return err
+		}
 	}
 	style := string(styleBytes)
 
