@@ -60,7 +60,7 @@ func init() {
 		flag.PrintDefaults()
 	}
 	flag.StringVar(&stylesheet, "stylesheet", "style.css", "path to extra stylesheet")
-	flag.StringVar(&assets, "asset-dir", "assets/", "path to dir with images and the like")
+	flag.StringVar(&assets, "asset-dir", ".", "path to dir with images and the like")
 	flag.StringVar(&port, "port", "8080", "port to bind")
 	flag.StringVar(&addr, "addr", "localhost", "addr to bind")
 	flag.Parse()
