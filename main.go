@@ -54,6 +54,16 @@ body > section {
   margin: 0; padding: 0;
 }`
 
+const documentTrailer = `<style>
+body {
+  position: static; overflow-y: scroll;
+}
+body > section {
+  display: static;
+  top: auto;
+}
+</style>`
+
 func init() {
 	flag.Usage = func() {
 		fmt.Printf("Usage: %s [OPTIONS] SLIDES\n", os.Args[0])
@@ -219,6 +229,7 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-h.ctx.Done():
+			fmt.Fprintln(w, documentTrailer)
 			return
 		case <-time.After(30 * time.Second):
 			// Trickle a byte so client doesn't close connection.
