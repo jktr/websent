@@ -20,7 +20,7 @@ Get your slides to your viewers by
 
 - showing your browser on a beamer
 - letting them browse the `websent` server  
-  (see --addr/--port)
+  (see the --bind flag)
 
 
 The TUI controls the presentation.  

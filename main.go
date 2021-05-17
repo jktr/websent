@@ -25,8 +25,7 @@ import (
 )
 
 var (
-	addr         string
-	port         string
+	bind         string
 	assets       string
 	stylesheet   string
 	presentation string
@@ -72,8 +71,7 @@ func init() {
 	}
 	flag.StringVar(&stylesheet, "stylesheet", "style.css", "path to extra stylesheet")
 	flag.StringVar(&assets, "asset-dir", ".", "path to dir with images and the like")
-	flag.StringVar(&port, "port", "8080", "port to bind")
-	flag.StringVar(&addr, "addr", "localhost", "addr to bind")
+	flag.StringVar(&bind, "bind", "localhost:8080", "address and port to bind")
 	flag.Parse()
 	if flag.NArg() != 1 {
 		flag.Usage()
@@ -360,7 +358,7 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 	}
 
 	status := views.NewTextBar()
-	status.SetLeft(fmt.Sprintf(" http://%s:%s ", addr, port), tcell.StyleDefault)
+	status.SetLeft(" http://"+bind, tcell.StyleDefault)
 	status.SetRight("j|next k|prev r|eload q|uit ", tcell.StyleDefault)
 	panel.SetStatus(status)
 
@@ -495,7 +493,7 @@ func main() {
 	mux.Handle("/favicon.ico", http.RedirectHandler(
 		"/assets/favicon.ico", http.StatusTemporaryRedirect))
 
-	srv := http.Server{Addr: addr + ":" + port, Handler: mux}
+	srv := http.Server{Addr: bind, Handler: mux}
 
 	go tui(state, cond, cancel)
 
