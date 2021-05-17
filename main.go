@@ -20,7 +20,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/views"
-	bf "gopkg.in/russross/blackfriday.v2"
+
+	bf "github.com/russross/blackfriday/v2"
 )
 
 var (
