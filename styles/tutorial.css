@@ -39,7 +39,18 @@ body > section {
   }
 }
 
+/* TODO `:has(> img)` would enable better img scaling */
+body > section p > img {
+  height: 100%;
+  width: 100%;
+  max-height: 70vh;
+  margin-top: 0;
+  object-fit: scale-down;
+}
+
 body > section li {
+  margin-left: 2ch;
+  list-style-position: outside;
   font-size: 6vh;
 }
 

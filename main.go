@@ -5,10 +5,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"embed"
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -29,48 +30,22 @@ var (
 	assets       string
 	stylesheet   string
 	presentation string
+
+	//go:embed partials/*.html styles/*.css
+	embedded  embed.FS
+	templates *template.Template
 )
 
-// minimal stylesheet to get the slideshow effect
-const documentHeader = `<!doctype html>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=yes'>
-<base href='/assets/'>
-<style>
-:root { --slide:%d; --total-slides:'%d'; }
-body {
-  height:100vh; width:100%%;
-  position:fixed; overflow:hidden;
-  padding: 0; margin: 0;
-}
-body > section {
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  top: calc(-100vh * (var(--slide) - 1));
-  position: relative;
-  width: 100%%; height: 100vh;
-  font-size: 7vh;
-  overflow: hidden;
-  margin: 0; padding: 0;
-}`
-
-const documentTrailer = `<style>
-body {
-  position: static; overflow-y: scroll;
-}
-body > section {
-  display: static;
-  top: auto;
-}
-</style>`
-
 func init() {
+	// argparsing
 	flag.Usage = func() {
 		fmt.Printf("Usage: %s [OPTIONS] SLIDES\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	flag.StringVar(&stylesheet, "stylesheet", "style.css", "path to extra stylesheet")
-	flag.StringVar(&assets, "asset-dir", ".", "path to dir with images and the like")
+	flag.StringVar(&stylesheet, "style", "builtin:none",
+		"path to extra stylesheet, or a builtin")
+	flag.StringVar(&assets, "asset-dir", ".",
+		"path to dir with images, fonts, etc")
 	flag.StringVar(&bind, "bind", "localhost:8080", "address and port to bind")
 	flag.Parse()
 	if flag.NArg() != 1 {
@@ -78,6 +53,9 @@ func init() {
 		os.Exit(1)
 	}
 	presentation = os.Args[len(os.Args)-1]
+
+	// embedded template loading
+	templates = template.Must(template.ParseFS(embedded, "partials/*.html"))
 }
 
 type State struct {
@@ -85,9 +63,9 @@ type State struct {
 	Total      int
 	Generation int
 	Title      string
-	Slides     []string
+	Slides     []template.HTML
 	SlidesRaw  []string
-	Stylesheet *string
+	UserStyle  template.CSS
 	M          *sync.RWMutex
 }
 
@@ -110,21 +88,10 @@ func (s *State) Reload(presentation, stylesheet string) error {
 		return err
 	}
 
-	if len(slides) < 1 {
-		return errors.New("tried to load a presentation without slides")
-	}
-
-	styleBytes, err := ioutil.ReadFile(stylesheet)
+	userstyle, err := loadUserStyle(stylesheet)
 	if err != nil {
-		if os.IsNotExist(err) && stylesheet == "style.css" {
-			// fall back to the builtin stylesheet only if the
-			// sheet we failed to fetch was at the default path
-			styleBytes = []byte{}
-		} else {
-			return err
-		}
+		return err
 	}
-	style := string(styleBytes)
 
 	s.M.Lock()
 	defer s.M.Unlock()
@@ -137,9 +104,63 @@ func (s *State) Reload(presentation, stylesheet string) error {
 	s.Title = title
 	s.Slides = slides
 	s.SlidesRaw = slidesRaw
-	s.Stylesheet = &style
+	s.UserStyle = userstyle
 
 	return nil
+}
+
+func loadUserStyle(stylesheet string) (template.CSS, error) {
+	if strings.HasPrefix(stylesheet, "builtin:") {
+		stylename := strings.TrimPrefix(stylesheet, "builtin:")
+
+		style, err := embedded.ReadFile("styles/" + stylename + ".css")
+		if err != nil {
+			return "", fmt.Errorf(`tried to load builtin stylesheet "%s" that does not exist`, stylename)
+		}
+		return template.CSS(style), nil
+	}
+
+	style, err := os.ReadFile(stylesheet)
+	return template.CSS(style), err
+}
+
+func loadSlides(file string) (string, []template.HTML, []string, error) {
+	if !strings.HasSuffix(file, ".md") {
+		return "", []template.HTML{}, []string{},
+			errors.New(file + " doesn't end in '.md'; not markdown?")
+	}
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return "", []template.HTML{}, []string{}, err
+	}
+
+	// drops trailing blank lines/slides
+	content = bytes.TrimSpace(content)
+
+	// FIXME custom blackfriday HTMLRenderer seems like a better solution
+	title := "websent"
+	slidesHTML := []template.HTML{}
+	slidesMarkdown := []string{}
+	for _, slide := range bytes.Split(content, []byte("\n\n\n")) {
+
+		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions)))
+		text = "<section>\n" + text + "</section>\n"
+
+		slidesHTML = append(slidesHTML, template.HTML(text))
+		slidesMarkdown = append(slidesMarkdown, string(slide)+"\n")
+	}
+
+	if len(slidesMarkdown) < 1 {
+		return title, slidesHTML, slidesMarkdown, errors.New("tried to load a presentation without slides")
+	}
+
+	if bytes.HasPrefix(content, []byte("# ")) {
+		// string containing everything after "# " in first line
+		title = string(bytes.SplitN(content, []byte("\n"), 2)[0][2:])
+	}
+
+	return title, slidesHTML, slidesMarkdown, nil
 }
 
 func (s *State) EventStream(ctx context.Context, cond *sync.Cond) <-chan interface{} {
@@ -209,15 +230,11 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	events := h.state.EventStream(streamctx, h.cond)
 
-	// send header, user stylesheet, and slides
+	// send presentation content
 	h.state.M.RLock()
-	{
-		fmt.Fprintf(w, documentHeader, h.state.Current, h.state.Total)
-		fmt.Fprintln(w, *h.state.Stylesheet)
-		fmt.Fprintf(w, "</style>\n<title>%s</title>\n", h.state.Title)
-		for _, slide := range h.state.Slides {
-			fmt.Fprintln(w, slide)
-		}
+	if err := templates.ExecuteTemplate(w, "main.html", h.state); err != nil {
+		h.state.M.RUnlock()
+		return
 	}
 	h.state.M.RUnlock()
 
@@ -228,7 +245,8 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-h.ctx.Done():
-			fmt.Fprintln(w, documentTrailer)
+			trailer, _ := embedded.ReadFile("partials/trailer.html")
+			w.Write(trailer)
 			return
 		case <-time.After(30 * time.Second):
 			// Trickle a byte so client doesn't close connection.
@@ -244,17 +262,16 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			switch e := e.(type) {
 			case int:
-				fmt.Fprintf(w, "<style>:root{--slide:%d;}</style>\n", e)
+				templates.ExecuteTemplate(w, "slidechange.html",
+					struct{ Current int }{Current: e})
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
 				}
 			case string:
 				switch e {
 				case "refresh":
-					fmt.Fprintln(w, "<script>location.reload();</script>")
-					if f, ok := w.(http.Flusher); ok {
-						f.Flush()
-					}
+					reload, _ := embedded.ReadFile("partials/reload.html")
+					w.Write(reload)
 					return
 				}
 			}
@@ -436,41 +453,6 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 	}
 }
 
-func loadSlides(file string) (string, []string, []string, error) {
-	if !strings.HasSuffix(file, ".md") {
-		return "", []string{}, []string{},
-			errors.New(file + " doesn't end in '.md'; not markdown?")
-	}
-
-	content, err := ioutil.ReadFile(file)
-	if err != nil {
-		return "", []string{}, []string{}, err
-	}
-
-	// drops trailing blank lines/slides
-	content = bytes.TrimSpace(content)
-
-	// FIXME custom blackfriday HTMLRenderer seems like a better solution
-	title := "websent"
-	slidesHTML := []string{}
-	slidesMarkdown := []string{}
-	for _, slide := range bytes.Split(content, []byte("\n\n\n")) {
-
-		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions)))
-		text = "<section>\n" + text + "</section>\n"
-
-		slidesHTML = append(slidesHTML, text)
-		slidesMarkdown = append(slidesMarkdown, string(slide)+"\n")
-	}
-
-	if bytes.HasPrefix(content, []byte("# ")) {
-		// string containing everything after "# " in first line
-		title = string(bytes.SplitN(content, []byte("\n"), 2)[0][2:])
-	}
-
-	return title, slidesHTML, slidesMarkdown, nil
-}
-
 func main() {
 	state := &State{
 		Current: 1,
@@ -501,8 +483,7 @@ func main() {
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		err := srv.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
 	}()
