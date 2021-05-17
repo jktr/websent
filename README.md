@@ -8,6 +8,7 @@ Controlled via terminal.
 Doesn't need any JavaScript.
 
 First, build or fetch the tool with:
+
 ```
 $ git clone https://github.com/jktr/websent
 $ cd websent && go build
@@ -16,14 +17,19 @@ $ go get -u github.com/jktr/websent
 ```
 
 You can then launch the tutorial presentation
-from the `/example` directory and view
+from the `./tutorial` directory and view
 it at http://localhost:8080.
+
 ```
 $ cd example/
-$ websent tutorial.md
+$ websent --style builtin:tutorial tutorial.md
 <TUI opens>
 ```
 
+Note that (by default) all files in the current
+directory are served over HTTP as part of the
+presentation's assets. Set `--asset-dir` to avoid
+leaking private files.
 
 [Suckess' sent](https://tools.suckless.org/sent)
 previously filled this tool's niche for me, but there

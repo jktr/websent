@@ -7,19 +7,20 @@
 }
 
 body {
-  margin:0;
   background: var(--bg, gray);
   font-family: sans-serif;
   counter-reset: slide;
 }
+
 body > section::before {
   position: absolute;
   bottom: 1rem;
   right: 1rem;
   font-size: 3vh;
   counter-increment: slide;
-  content: counter(slide) ' / ' var(--total-slides);
+  content: counter(slide) ' / ' var(--total-slides, 0);
 }
+
 body > section {
   margin: 1rem;
   margin-bottom: 2rem;
@@ -30,16 +31,20 @@ body > section {
   font-size: 7vh;
   color: var(--slide-fg, black);
   background: var(--slide-bg, white);
-  transition: 200ms top;
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  body > section {
+    transition: 200ms top;
+  }
+}
+
 body > section li {
-  margin: 0;
   font-size: 6vh;
-  list-style-position: outside;
 }
+
 body > section pre {
   flex-basis: min-content;
-  margin: 0;
   font-size: 4vh;
 }
 
@@ -50,7 +55,7 @@ body > section a {
 body > section p > code {
   color: var(--slide-bg, white);
   background-color: var(--bg, gray);
-  border-radius: 0.5ch;
+  border-radius: 0.3ch;
   padding: 0 0.5ch;
   font-size: 6vh;
 }
