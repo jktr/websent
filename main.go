@@ -259,6 +259,10 @@ func (h SlideHandler) Dump(w io.Writer) error {
 	if err := templates.ExecuteTemplate(w, "main.html", h.state); err != nil {
 		return err
 	}
+	h.state.M.RUnlock()
+	trailer, _ := embedded.ReadFile("partials/trailer.html")
+	_, err := w.Write(trailer)
+	return err
 }
 
 func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +270,15 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
+	}
+
+	// As long as we're not shutting down, issue a refresh directive.
+	// This allows hot-reloading the page, but forces us to serve a
+	// final reload of the presentation after we've initiated shutdown.
+	select {
+	case <-h.ctx.Done():
+	default:
+		w.Header().Set("Refresh", "0")
 	}
 
 	atomic.AddInt32(h.connected, 1)
@@ -315,8 +328,7 @@ func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case string:
 				switch e {
 				case "refresh":
-					reload, _ := embedded.ReadFile("partials/reload.html")
-					w.Write(reload)
+					// there's a Refresh header, so return triggers a a reload
 					return
 				}
 			}
@@ -387,7 +399,7 @@ func decodeTcellEvent(event tcell.Event) Event {
 	return Unknown
 }
 
-func tui(state *State, cond *sync.Cond, connected *int32, shutdown func()) {
+func tui(state *State, cond *sync.Cond, connected *int32, dropping *int32, shutdown func()) {
 
 	screen, err := tcell.NewScreen()
 	if err != nil {
@@ -489,6 +501,7 @@ func tui(state *State, cond *sync.Cond, connected *int32, shutdown func()) {
 			refreshTitle()
 			refreshSlide()
 		case Quit:
+			*dropping = *connected
 			shutdown()
 			cond.Broadcast()
 			screen.Fini()
@@ -541,7 +554,8 @@ func main() {
 
 	srv := http.Server{Addr: bind, Handler: mux}
 
-	go tui(state, cond, sh.connected, cancel)
+	dropping := int32(0)
+	go tui(state, cond, sh.connected, &dropping, cancel)
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
@@ -558,7 +572,14 @@ func main() {
 		cancel()
 	}
 
-	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Due to the way refresh works, we need to allow clients some time to
+	// do a final reload of the page once we've initiated shutdown. This
+	// allows us to skip that shutdown delay if no clients were connected.
+	if dropping > 0 {
+		time.Sleep(time.Second)
+	}
+
+	shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdown); err != nil {
 		log.Fatal("server shutdown failed")
