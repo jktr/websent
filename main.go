@@ -300,7 +300,7 @@ func decodeTcellEvent(event tcell.Event) Event {
 		switch event.Buttons() {
 		case tcell.Button1:
 			return Next
-		case tcell.Button3:
+		case tcell.Button2:
 			return Prev
 		case tcell.WheelDown:
 			return Next
