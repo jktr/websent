@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -147,16 +149,37 @@ func loadSlides(file string) (string, []template.HTML, []string, error) {
 	// drops trailing blank lines/slides
 	content = bytes.TrimSpace(content)
 
+	// XXX horrifying fixup for resizing images without `:has(> img)`
+	imageSingle := regexp.MustCompile(`<p>(<img[^<>]+/>)</p>`)
+	imageMulti := regexp.MustCompile(`<p>(?P<x>(<img[^<>]+/>\n?){2,}\n?)</p>`)
+	imageCaptionBefore := regexp.MustCompile(`<p>(.+)\n(<img[^<>]+/>)</p>`)
+	imageCaptionAfter := regexp.MustCompile(`<p>(<img[^<>]+/>)\n(.+)</p>`)
+
 	// FIXME custom blackfriday HTMLRenderer seems like a better solution
 	title := "websent"
 	slidesHTML := []template.HTML{}
 	slidesMarkdown := []string{}
-	for _, slide := range bytes.Split(content, []byte("\n\n\n")) {
+	class := regexp.MustCompile(`^\.(.)+\n`)
+	for idx, slide := range bytes.Split(content, []byte("\n\n\n")) {
+
+		macro := class.Find(slide)
+		prefix := "<section id='s" + strconv.Itoa(idx+1) + "'"
+		if len(macro) > 0 {
+			prefix += " class='" + string(macro[1:len(macro)-1]) + "'"
+			slide = bytes.TrimPrefix(slide, macro)
+		}
+		prefix += ">\n"
+		suffix := "</section>\n"
 
 		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions)))
-		text = "<section>\n" + text + "</section>\n"
 
-		slidesHTML = append(slidesHTML, template.HTML(text))
+		// apply hacky fix-ups
+		text = imageSingle.ReplaceAllString(text, "$1")
+		text = imageCaptionBefore.ReplaceAllString(text, "<p>$1</p>\n$2")
+		text = imageCaptionAfter.ReplaceAllString(text, "$1\n<p>$2</p>")
+		text = imageMulti.ReplaceAllString(text, "$x")
+
+		slidesHTML = append(slidesHTML, template.HTML(prefix+text+suffix))
 		slidesMarkdown = append(slidesMarkdown, string(slide)+"\n")
 	}
 

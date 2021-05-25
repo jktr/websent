@@ -17,6 +17,7 @@ body {
   position: fixed;
   overflow: hidden;
 }
+
 body > section {
   position: relative;
   top: calc(-100vh * (var(--slide) - 1));
@@ -30,6 +31,19 @@ body > section {
   justify-content: center;
   font-size: 7vh;
 }
+
+body > section > img {
+  flex: 1 1 auto;
+  height: 0;
+  width: auto;
+  max-width: 100%;
+  object-fit: scale-down;
+}
+
+code {
+  font-size: 5vh;
+}
+
 </style>
 <style>
 {{ .UserStyle }}

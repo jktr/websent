@@ -24,8 +24,9 @@ body > section::before {
 body > section {
   margin: 1rem;
   margin-bottom: 2rem;
-  width: calc(100% - 2rem);
-  height: calc(100vh - 2rem);
+  padding: 1rem;
+  width: calc(100% - 4rem);
+  height: calc(100vh - 4rem);
   border-radius:1rem 1rem 0rem 1rem;
 
   font-size: 7vh;
@@ -39,13 +40,17 @@ body > section {
   }
 }
 
-/* TODO `:has(> img)` would enable better img scaling */
-body > section p > img {
-  height: 100%;
-  width: 100%;
-  max-height: 70vh;
+body > section.row {
+  flex-direction: row;
+  gap: 1rem;
+}
+
+body > section.row > * {
+  flex: 1 1 auto;
+  height: auto;
+  max-height: 100%;
+  width: 0;
   margin-top: 0;
-  object-fit: scale-down;
 }
 
 body > section li {

@@ -63,6 +63,15 @@ e.g. !\[green square](green.jpg)
 Note the relative path.  
 
 
+- slides have css ids (#s1, #s2, …)
+- prefixing a slide with ".my-class" adds that css class to the slide
+
+
+.row
+![green square](green.jpg)
+this slide layout uses the .row class
+
+
 ```
 #!/usr/bin/env bash
 
