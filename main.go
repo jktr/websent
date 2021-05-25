@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"embed"
@@ -10,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -30,6 +32,7 @@ var (
 	assets       string
 	stylesheet   string
 	presentation string
+	output       string
 
 	//go:embed partials/*.html styles/*.css
 	embedded  embed.FS
@@ -39,20 +42,26 @@ var (
 func init() {
 	// argparsing
 	flag.Usage = func() {
-		fmt.Printf("Usage: %s [OPTIONS] SLIDES\n", os.Args[0])
+		fmt.Printf("Usage: %s [OPTIONS] SLIDES [OUTPUT]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
+	flag.StringVar(&bind, "bind", "localhost:8080", "address and port to bind")
 	flag.StringVar(&stylesheet, "style", "builtin:none",
 		"path to extra stylesheet, or a builtin")
 	flag.StringVar(&assets, "asset-dir", ".",
 		"path to dir with images, fonts, etc")
-	flag.StringVar(&bind, "bind", "localhost:8080", "address and port to bind")
 	flag.Parse()
-	if flag.NArg() != 1 {
+
+	switch flag.NArg() {
+	case 1:
+		presentation = os.Args[len(os.Args)-1]
+	case 2:
+		presentation = os.Args[len(os.Args)-2]
+		output = os.Args[len(os.Args)-1]
+	default:
 		flag.Usage()
 		os.Exit(1)
 	}
-	presentation = os.Args[len(os.Args)-1]
 
 	// embedded template loading
 	templates = template.Must(template.ParseFS(embedded, "partials/*.html"))
@@ -216,6 +225,13 @@ func NewSlideHandler(ctx context.Context, state *State, cond *sync.Cond) SlideHa
 		ctx:   ctx,
 		state: state,
 		cond:  cond,
+	}
+}
+
+func (h SlideHandler) Dump(w io.Writer) error {
+	h.state.M.RLock()
+	if err := templates.ExecuteTemplate(w, "main.html", h.state); err != nil {
+		return err
 	}
 }
 
@@ -468,8 +484,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	sh := NewSlideHandler(ctx, state, cond)
+
+	if output != "" {
+		time.Sleep(time.Second)
+		file, err := os.Create(output)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		w := bufio.NewWriter(file)
+		if err := sh.Dump(w); err != nil {
+			log.Fatal(err)
+		}
+		w.Flush()
+		return
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/", NewSlideHandler(ctx, state, cond))
+	mux.Handle("/", sh)
 	mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir(assets))))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
 	mux.Handle("/favicon.ico", http.RedirectHandler(
