@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -238,16 +239,18 @@ func (s *State) EventStream(ctx context.Context, cond *sync.Cond) <-chan interfa
 }
 
 type SlideHandler struct {
-	ctx   context.Context
-	state *State
-	cond  *sync.Cond
+	ctx       context.Context
+	state     *State
+	cond      *sync.Cond
+	connected *int32
 }
 
 func NewSlideHandler(ctx context.Context, state *State, cond *sync.Cond) SlideHandler {
 	return SlideHandler{
-		ctx:   ctx,
-		state: state,
-		cond:  cond,
+		ctx:       ctx,
+		state:     state,
+		cond:      cond,
+		connected: new(int32),
 	}
 }
 
@@ -259,11 +262,14 @@ func (h SlideHandler) Dump(w io.Writer) error {
 }
 
 func (h SlideHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// "/" matches all paths, so check that it's actually "/"
+	// "/" matches all paths, so check that it's actually just "/"
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
+
+	atomic.AddInt32(h.connected, 1)
+	defer atomic.AddInt32(h.connected, -1)
 
 	streamctx, cancel := context.WithCancel(h.ctx)
 	defer cancel()
@@ -381,7 +387,7 @@ func decodeTcellEvent(event tcell.Event) Event {
 	return Unknown
 }
 
-func tui(state *State, cond *sync.Cond, shutdown func()) {
+func tui(state *State, cond *sync.Cond, connected *int32, shutdown func()) {
 
 	screen, err := tcell.NewScreen()
 	if err != nil {
@@ -420,6 +426,7 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 
 	refreshTitle := func() {
 		header.SetCenter(state.Title, tcell.StyleDefault)
+		header.SetRight(fmt.Sprintf("%d ", *connected), tcell.StyleDefault)
 		header.Draw()
 	}
 	refreshSlide := func() {
@@ -454,6 +461,7 @@ func tui(state *State, cond *sync.Cond, shutdown func()) {
 		screen.Show()
 
 		event := screen.PollEvent()
+		refreshTitle()
 		switch decodeTcellEvent(event) {
 		case First:
 			state.GotoSlide(1)
@@ -533,7 +541,7 @@ func main() {
 
 	srv := http.Server{Addr: bind, Handler: mux}
 
-	go tui(state, cond, cancel)
+	go tui(state, cond, sh.connected, cancel)
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
