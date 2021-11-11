@@ -7,7 +7,7 @@
       websent = final.buildGoModule {
         name = "websent";
         src = self;
-        vendorSha256 = "sha256-w4UMmW7Y5qEFeoPNxUr8lD6RagDlavOevH+CBZIVr+I=";
+        vendorSha256 = "sha256-urWsOTiRQgMHgLOrio3nLgUguqOkqi55II8XLnR46F8=";
       };
     };
 
