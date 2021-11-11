@@ -1,13 +1,19 @@
+:root {
+  --bg: #928374;
+  --slide-bg: #fbf1c7;
+  --slide-fg: #3c3836;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg:gray;
-    --slide-bg:black;
-    --slide-fg:white;
+    --bg: #928374;
+    --slide-bg: #282828;
+    --slide-fg: #ebdbb2;
   }
 }
 
 body {
-  background: var(--bg, gray);
+  background: var(--bg);
   font-family: sans-serif;
   counter-reset: slide;
 }
@@ -30,8 +36,8 @@ body > section {
   border-radius:1rem 1rem 0rem 1rem;
 
   font-size: 7vh;
-  color: var(--slide-fg, black);
-  background: var(--slide-bg, white);
+  color: var(--slide-fg);
+  background: var(--slide-bg);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -65,12 +71,12 @@ body > section pre {
 }
 
 body > section a {
-  color: var(--bg, gray);
+  color: var(--bg);
 }
 
 body > section p > code {
-  color: var(--slide-bg, white);
-  background-color: var(--bg, gray);
+  color: var(--slide-bg);
+  background-color: var(--bg);
   border-radius: 0.3ch;
   padding: 0 0.5ch;
   font-size: 6vh;
