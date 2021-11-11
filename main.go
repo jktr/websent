@@ -161,6 +161,9 @@ func loadSlides(file string) (string, []template.HTML, []string, error) {
 	slidesHTML := []template.HTML{}
 	slidesMarkdown := []string{}
 	class := regexp.MustCompile(`^\.(.)+\n`)
+	bfRenderer := bf.WithRenderer(bf.NewHTMLRenderer(bf.HTMLRendererParameters{
+		Flags: bf.CommonHTMLFlags | bf.HrefTargetBlank | bf.NoreferrerLinks,
+	}))
 	for idx, slide := range bytes.Split(content, []byte("\n\n\n")) {
 
 		macro := class.Find(slide)
@@ -172,7 +175,7 @@ func loadSlides(file string) (string, []template.HTML, []string, error) {
 		prefix += ">\n"
 		suffix := "</section>\n"
 
-		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions)))
+		text := string(bf.Run(slide, bf.WithExtensions(bf.CommonExtensions), bfRenderer))
 
 		// apply hacky fix-ups
 		text = imageSingle.ReplaceAllString(text, "$1")
